@@ -20,9 +20,9 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
 .sub-row label{font-size:12px;color:var(--text2);white-space:nowrap;font-weight:600;min-width:52px}
 .sub-row input{flex:1;padding:6px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none}
 .sub-row input:focus{border-color:var(--accent)}
-.table-head{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 52px 28px 38px;gap:2px;padding:5px 14px;font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
+.table-head{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 48px 52px 28px 38px;gap:2px;padding:5px 14px;font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
 .table-wrap{flex:1;overflow-y:auto;background:var(--bg);min-height:0}
-.layer-row{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 52px 28px 38px;gap:2px;padding:3px 14px;align-items:center;border-bottom:1px solid rgba(48,54,61,.5)}
+.layer-row{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 48px 52px 28px 38px;gap:2px;padding:3px 14px;align-items:center;border-bottom:1px solid rgba(48,54,61,.5)}
 .layer-row:hover{background:var(--row-hover)}
 .layer-row.hidden-row{opacity:.35}
 .layer-row input,.layer-row select{padding:5px 4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;font-family:inherit;outline:none;width:100%}
@@ -85,8 +85,8 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
   <div class="panel-form" id="form-panel">
     <div class="panel-head">膜层参数 <span class="count" id="layer-count">0</span></div>
     <div class="sub-row"><label>衬底</label><input type="text" id="substrate" value="p-Si (100)" placeholder="p-Si (100)"></div>
-    <div class="sub-row"><label>侧壁角</label><input type="range" id="bevel-angle" min="0" max="80" value="45" step="1"><span id="bevel-val" style="font-size:11px;color:var(--text2);min-width:36px;text-align:right">45°</span></div>
-    <div class="table-head"><span>#</span><span>材料</span><span>颜色</span><span>y_bot</span><span>y_top</span><span>Mask</span><span>类型</span><span></span><span></span></div>
+    <div class="sub-row"><label>默认侧壁角</label><input type="range" id="bevel-angle" min="0" max="80" value="45" step="1"><span id="bevel-val" style="font-size:11px;color:var(--text2);min-width:36px;text-align:right">45°</span></div>
+    <div class="table-head"><span>#</span><span>材料</span><span>颜色</span><span>y_bot</span><span>y_top</span><span>Mask</span><span>侧壁角</span><span>类型</span><span></span><span></span></div>
     <div class="table-wrap" id="layer-table"></div>
     <div class="add-row"><button id="btn-add">＋ 添加膜层</button></div>
     <div class="actions"><button id="btn-gen" class="btn-gen">⚡ 生成图表</button><button id="btn-clear" class="btn-clear">清空</button></div>
@@ -135,7 +135,7 @@ function inMsk(nx,m){if(!m||m==="none")return true;var r=MSK[m.toLowerCase()];if
 
 // ═══ RENDER: beveled sidewalls + material hatch patterns (PlanarProcess-inspired) ═══
 function render(layersData,substrate,W,H,MX,MY,SH){
-  var chartWidth=W-2*MX,chartHeight=H-2*MY-SH,yBottom=MY+CH;
+  var chartWidth=W-2*MX,chartHeight=H-2*MY-SH,yBottom=MY+chartHeight;
   var layerCount=layersData.length;if(layerCount===0)return null;
   // Find the maximum y_top across all layers for normalization
   var maxTop=0;for(var i=0;i<layerCount;i++){if(layersData[i].y_top>maxTop)maxTop=layersData[i].y_top}maxTop=Math.max(maxTop,1);
@@ -157,10 +157,9 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   var substrateColor=col(substrate),substrateHatch=getHatch(substrate);
   var svgLines=[],seamX=MX+chartWidth+50;
   var seamLines=[{y:yBottom,label:"0 nm"}],NSEG=120;
-  // Read bevel angle from DOM (0° = vertical, 45° = default, 80° = very sloped)
+  // Read global default bevel from DOM (used as fallback when layer has no bevel set)
   var bevelAngleEl=document.getElementById('bevel-angle');
-  var bevelDeg=bevelAngleEl?parseInt(bevelAngleEl.value)||45:45;
-  var BEVEL_COEFF=Math.tan(bevelDeg*Math.PI/180);
+  var defaultBevelDeg=bevelAngleEl?parseInt(bevelAngleEl.value)||45:45;
   // Transparent background (no background rect — preview gets its bg from CSS)
   svgLines.push('<text x="'+(W/2)+'" y="28" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="17" fill="#1a1a2e" font-weight="700" text-anchor="middle">Device Stack Cross-Section</text>');
   svgLines.push('<defs>'+hatches.join("")+'</defs>');
@@ -192,12 +191,12 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   // ── Helper: add bevel (45-degree sloped sidewall) points at mask edge ──
   // When the surface has a step at a mask boundary, BEVEL inserts interpolated
   // points so the layer sidewall slopes instead of being vertical.
-  function addBevelPoints(points,segmentIdx,segEnd,maxSeg,NSEG,flatTop,isConformal,layerThickPx){
-    var surfaceVal,bevelTop;
+  function addBevelPoints(points,segmentIdx,segEnd,maxSeg,NSEG,flatTop,isConformal,layerThickPx,bevelDeg){
+    var surfaceVal,bevelTop,bevelCoeff=Math.tan(bevelDeg*Math.PI/180);
     // Left edge bevel
     if(segmentIdx>0){
       var stepHeight=Math.abs(surface[segmentIdx]-surface[segmentIdx-1]);
-      var bevelWidth=stepHeight*BEVEL_COEFF;
+      var bevelWidth=stepHeight*bevelCoeff;
       if(stepHeight>0.5&&bevelWidth>1){
         var leftEdgeX=MX+(segmentIdx-1)/NSEG*chartWidth,midX=leftEdgeX+bevelWidth;
         if(midX>points[0].x)midX=points[0].x;
@@ -210,7 +209,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
     // Right edge bevel
     if(segEnd<maxSeg){
       var stepHeight=Math.abs(surface[segEnd]-surface[segEnd+1]);
-      var bevelWidth=stepHeight*BEVEL_COEFF;
+      var bevelWidth=stepHeight*bevelCoeff;
       if(stepHeight>0.5&&bevelWidth>1){
         var rightEdgeX=MX+(segEnd+1)/NSEG*chartWidth,midXR=rightEdgeX-bevelWidth;
         if(midXR<points[points.length-1].x)midXR=points[points.length-1].x;
@@ -282,6 +281,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
       var thickPx=(layer.y_top-layer.y_bottom)/maxTop*chartHeight;
       if(thickPx<0.5)thickPx=0.5;
       var layerHatch=getHatch(layer.name);
+      var bevelDeg=(layer.bevel!=null)?layer.bevel:defaultBevelDeg;
       // flatTop: the y-pixel of a perfectly flat layer top (blanket mode)
       var flatTop=yBottom-(layer.y_top/maxTop*chartHeight);
       var isConformal=layer.type==="conformal";
@@ -304,7 +304,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
           points.push({x:xPos,top:top,bot:bot});}
 
         // Add bevel (45-degree sloped sidewall) at mask edges
-        addBevelPoints(points,seg.start,seg.end,NSEG,NSEG,flatTop,isConformal,thickPx);
+        addBevelPoints(points,seg.start,seg.end,NSEG,NSEG,flatTop,isConformal,thickPx,bevelDeg);
 
         // Build and emit the SVG path for this segment
         var pathStr=buildPathFromPoints(points);
@@ -341,7 +341,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
 }
 
 // Presets
-function tty(layers){var y=0,o=[];for(var i=0;i<layers.length;i++){o.push([layers[i][0],y,y+layers[i][1],layers[i][2],layers[i][3]]);y+=layers[i][1]}return o}
+function tty(layers){var y=0,o=[];for(var i=0;i<layers.length;i++){o.push([layers[i][0],y,y+layers[i][1],layers[i][2],layers[i][3],layers[i][4]!=null?layers[i][4]:45]);y+=layers[i][1]}return o}
 var P={
   mems:{sub:"Si Substrate",layers:tty([["Thermal SiO2",500,"none","blanket"],["Bottom Electrode Poly-Si",300,"none","blanket"],["Sacrificial SiO2",2000,"none","blanket"],["Structural Poly-Si",2000,"half","blanket"],["Anchor SiN",300,"none","blanket"],["Release Etch Stop Al2O3",50,"none","blanket"],["Top Electrode Al",500,"half","blanket"],["Passivation SiN",400,"none","blanket"]])},
   lnoi:{sub:"LN Substrate",layers:tty([["BOX SiO2",2000,"none","blanket"],["LiNbO3 Film",600,"none","blanket"],["Waveguide Etch SiN",300,"half","blanket"],["Cladding SiO2",800,"none","blanket"],["Electrode Cr",20,"none","blanket"],["Electrode Au",200,"center","blanket"],["Passivation SiO2",500,"none","blanket"]])},
@@ -352,7 +352,7 @@ var P={
 
 // UI
 function mkRow(idx,data){
-  var name=data?data[0]:"SiO2",yB=data?data[1]:0,yT=data?data[2]:100,msk=data?data[3]:"none",tp=data?data[4]:"blanket",ac=col(name);
+  var name=data?data[0]:"SiO2",yB=data?data[1]:0,yT=data?data[2]:100,msk=data?data[3]:"none",tp=data?data[4]:"blanket",bv=data?data[5]:45,ac=col(name);
   var div=document.createElement("div");div.className="layer-row";div.draggable=true;
   var masks=["none","sti","gate","contact","via","active","trench","mesa","fin","half","center","ridge","gsg","via2","grating"],mo="";
   for(var i=0;i<masks.length;i++)mo+='<option value="'+masks[i]+'"'+(masks[i]===msk?" selected":"")+'>'+(masks[i]==="none"?"无":masks[i])+"</option>";
@@ -362,6 +362,7 @@ function mkRow(idx,data){
     +'<input class="ybot-input" type="number" value="'+yB+'" placeholder="0" min="0" step="1">'
     +'<input class="ytop-input" type="number" value="'+yT+'" placeholder="100" min="1" step="1">'
     +'<select class="mask-select">'+mo+"</select>"
+    +'<input class="bevel-input" type="number" value="'+bv+'" placeholder="45" min="0" max="80" step="1" title="侧壁倾角 0°-80°">'
     +'<button class="type-toggle'+(tp==="conformal"?" conformal":"")+'">'+(tp==="conformal"?"Conformal":"Planar")+"</button>"
     +'<button class="hide-btn" title="隐藏/显示此层">👁</button>'
     +'<button class="del-btn">✕</button>';
@@ -390,7 +391,10 @@ function loadPreset(name){var p=P[name];if(!p)return;substrateInput.value=p.sub;
 function gather(){var d=[];for(var i=0;i<layers.length;i++){var row=layers[i].row;if(!row)continue;if(row.classList.contains("hidden-row"))continue;
   var nm=(row.querySelector(".mat-input").value||"").trim()||"Layer",yb=parseFloat(row.querySelector(".ybot-input").value)||0,yt=parseFloat(row.querySelector(".ytop-input").value)||100;
   if(yt<=yb)yt=yb+1;var mk=row.querySelector(".mask-select").value,tp=row.querySelector(".type-toggle").classList.contains("conformal")?"conformal":"blanket";
-  var cl=row.querySelector(".color-pick").value||col(nm);d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl});}return d;}
+  var cl=row.querySelector(".color-pick").value||col(nm);
+  var bv=parseInt(row.querySelector(".bevel-input").value)||45;
+  if(bv<0)bv=0;if(bv>80)bv=80;
+  d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl,bevel:bv});}return d;}
 function gen(){try{var data=gather();if(data.length===0){previewDiv.innerHTML='<div class="empty-hint"><span>⚠️</span>请至少添加一层膜层</div>';statusMsg.innerHTML='<span class="err">无膜层</span>';return}
   var sub=(substrateInput.value||"").trim()||"p-Si (100)",svg=render(data,sub,1000,720,80,50,70);previewDiv.innerHTML=svg;
   var maxY=0;for(var i=0;i<data.length;i++){if(data[i].y_top>maxY)maxY=data[i].y_top}statusLayers.textContent="层数: "+data.length;statusThickness.textContent="max y: "+(maxY/1000).toFixed(2)+" μm";statusMsg.innerHTML='<span class="ok">✅</span>';}
