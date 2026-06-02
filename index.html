@@ -112,12 +112,12 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
 <ul class="suggest-popup" id="suggest-popup"></ul>
 <script>
 (function(){'use strict';
-var table=document.getElementById('layer-table'),prev=document.getElementById('preview');
-var layCnt=document.getElementById('layer-count'),stL=document.getElementById('st-layers');
-var stT=document.getElementById('st-thickness'),stS=document.getElementById('st-status');
-var toaster=document.getElementById('toast'),sug=document.getElementById('suggest-popup');
-var subInp=document.getElementById('substrate'),layers=[],curInput=null;
-function t(msg,ok){if(ok===undefined)ok=true;toaster.textContent=msg;toaster.style.background=ok?'var(--green)':'var(--danger)';toaster.classList.add('show');setTimeout(function(){toaster.classList.remove('show')},1800)}
+var layerTable=document.getElementById('layer-table'),previewDiv=document.getElementById('preview');
+var layerCount=document.getElementById('layer-count'),statusLayers=document.getElementById('st-layers');
+var statusThickness=document.getElementById('st-thickness'),statusMsg=document.getElementById('st-status');
+var toaster=document.getElementById('toast'),suggestPopup=document.getElementById('suggest-popup');
+var substrateInput=document.getElementById('substrate'),layers=[],currentInput=null;
+function toast(msg,ok){if(ok===undefined)ok=true;toaster.textContent=msg;toaster.style.background=ok?'var(--green)':'var(--danger)';toaster.classList.add('show');setTimeout(function(){toaster.classList.remove('show')},1800)}
 
 var CDB={sio2:"#90CAF9",sin:"#FFE082",polysi:"#A5D6A7",si:"#90A4AE",al:"#CFD8DC",cu:"#FFAB91",w:"#B39DDB",ti:"#EF9A9A",tin:"#F8BBD0",tan:"#FFCCBC",al2o3:"#DCEDC8",hfo2:"#F0F4C3",teos:"#81D4FA",bpsg:"#B3E5FC",psg:"#E1F5FE",sog:"#E1F5FE",pr:"#FFCDD2",arc:"#FFE0B2",barc:"#FFE0B2",gan:"#C8E6C9",sic:"#D7CCC8",aln:"#B2EBF2",imd:"#CE93D8",ild:"#CE93D8",passivation:"#EF9A9A",sige:"#C8E6C9",ge:"#A5D6A7",cosi2:"#BCAAA4",nisi:"#BCAAA4",ito:"#E0E0E0",zro2:"#F5F5DC",ru:"#D7CCC8",linbo3:"#E8D5B7",algaas:"#FFCC80",gaas:"#C8E6C9",inp:"#B2DFDB",ingaas:"#DCEDC8",au:"#FFD54F",pt:"#E0E0E0",cr:"#BCAAA4",ni:"#D7CCC8"};
 function san(s){var r=s.replace(/[\s_\-]/g,"");r=r.replace(/₀/g,"0").replace(/₁/g,"1").replace(/₂/g,"2").replace(/₃/g,"3").replace(/₄/g,"4").replace(/₅/g,"5").replace(/₆/g,"6").replace(/₇/g,"7").replace(/₈/g,"8").replace(/₉/g,"9");return r.toLowerCase()}
@@ -133,10 +133,14 @@ var MSK={gate:[[0.28,0.52]],contact:[[0.44,0.48]],via:[[0.45,0.47]],active:[[0.1
 function inMsk(nx,m){if(!m||m==="none")return true;var r=MSK[m.toLowerCase()];if(!r)return true;for(var i=0;i<r.length;i++){if(nx>=r[i][0]&&nx<=r[i][1])return true}return false}
 
 // ═══ RENDER: beveled sidewalls + material hatch patterns (PlanarProcess-inspired) ═══
-function render(layersD,sub,W,H,MX,MY,SH){
-  var CW=W-2*MX,CH=H-2*MY-SH,y0=MY+CH,n=layersD.length;if(n===0)return null;
-  var yM=0;for(var i=0;i<n;i++){if(layersD[i].y_top>yM)yM=layersD[i].y_top}yM=Math.max(yM,1);
-  var idxs=[];for(var i=0;i<n;i++)idxs.push(i);idxs.sort(function(a,b){return layersD[a].y_bottom-layersD[b].y_bottom});
+function render(layersData,substrate,W,H,MX,MY,SH){
+  var chartWidth=W-2*MX,chartHeight=H-2*MY-SH,yBottom=MY+CH;
+  var layerCount=layersData.length;if(layerCount===0)return null;
+  // Find the maximum y_top across all layers for normalization
+  var maxTop=0;for(var i=0;i<layerCount;i++){if(layersData[i].y_top>maxTop)maxTop=layersData[i].y_top}maxTop=Math.max(maxTop,1);
+  // Build sorted index: render layers bottom-up by y_bottom
+  var sortedIndices=[];for(var i=0;i<layerCount;i++)sortedIndices.push(i);
+  sortedIndices.sort(function(a,b){return layersData[a].y_bottom-layersData[b].y_bottom});
 
   // Hatch patterns for material categories
   var hatches=[
@@ -146,108 +150,189 @@ function render(layersD,sub,W,H,MX,MY,SH){
     '<pattern id="hMet" width="7" height="7" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="7" y2="0" stroke="#000" stroke-width="0.3" opacity="0.1"/><line x1="0" y1="3.5" x2="7" y2="3.5" stroke="#000" stroke-width="0.2" opacity="0.06"/></pattern>',
     '<pattern id="hPoly" width="9" height="9" patternTransform="rotate(30)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="9" y2="0" stroke="#000" stroke-width="0.25" opacity="0.1"/></pattern>',
   ];
-  function hatch(nm){var n=san(nm);if(n.indexOf("sio2")>=0||n.indexOf("teos")>=0||n.indexOf("bpsg")>=0||n.indexOf("psg")>=0||n.indexOf("sog")>=0)return"url(#hOx)";if(n.indexOf("sin")>=0)return"url(#hSiN)";if(n.indexOf("al")>=0||n.indexOf("cu")>=0||n.indexOf("w")>=0||n.indexOf("ti")>=0||n.indexOf("au")>=0||n.indexOf("metal")>=0)return"url(#hMet)";if(n.indexOf("poly")>=0||n.indexOf("pr")>=0)return"url(#hPoly)";if(n.indexOf("si")>=0)return"url(#hSi)";return null;}
+  // Match material name to hatch pattern via normalized substring matching
+  function getHatch(materialName){var norm=san(materialName);if(norm.indexOf("sio2")>=0||norm.indexOf("teos")>=0||norm.indexOf("bpsg")>=0||norm.indexOf("psg")>=0||norm.indexOf("sog")>=0)return"url(#hOx)";if(norm.indexOf("sin")>=0)return"url(#hSiN)";if(norm.indexOf("al")>=0||norm.indexOf("cu")>=0||norm.indexOf("w")>=0||norm.indexOf("ti")>=0||norm.indexOf("au")>=0||norm.indexOf("metal")>=0)return"url(#hMet)";if(norm.indexOf("poly")>=0||norm.indexOf("pr")>=0)return"url(#hPoly)";if(norm.indexOf("si")>=0)return"url(#hSi)";return null;}
 
-  var subC=col(sub),subH=hatch(sub);
-  var sv=[],rx=MX+CW+50,seams=[{y:y0,label:"0 nm"}],NSEG=120,BEVEL=0.5;
-  sv.push('<rect width="'+W+'" height="'+H+'" fill="#FAFAFA"/>');
-  sv.push('<text x="'+(W/2)+'" y="28" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="17" fill="#1a1a2e" font-weight="700" text-anchor="middle">Device Stack Cross-Section</text>');
-  sv.push('<defs>'+hatches.join("")+'</defs>');
-  sv.push('<rect x="'+MX.toFixed(1)+'" y="'+y0.toFixed(1)+'" width="'+CW.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+subC+'" stroke="#37474F" stroke-width="0.6"/>');
-  if(subH)sv.push('<rect x="'+MX.toFixed(1)+'" y="'+y0.toFixed(1)+'" width="'+CW.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+subH+'"/>');
-  sv.push('<text x="'+(W/2)+'" y="'+(y0+SH/2+5).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="14" fill="#546E7A" font-weight="700" text-anchor="middle">'+sub+'</text>');
+  var substrateColor=col(substrate),substrateHatch=getHatch(substrate);
+  var svgLines=[],seamX=MX+chartWidth+50;  // x position for right-side seam lines
+  var seamLines=[{y:yBottom,label:"0 nm"}],NSEG=120,BEVEL_COEFF=0.5;
+  svgLines.push('<rect width="'+W+'" height="'+H+'" fill="#FAFAFA"/>');
+  svgLines.push('<text x="'+(W/2)+'" y="28" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="17" fill="#1a1a2e" font-weight="700" text-anchor="middle">Device Stack Cross-Section</text>');
+  svgLines.push('<defs>'+hatches.join("")+'</defs>');
+  svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateColor+'" stroke="#37474F" stroke-width="0.6"/>');
+  if(substrateHatch)svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateHatch+'"/>');
+  svgLines.push('<text x="'+(W/2)+'" y="'+(yBottom+SH/2+5).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="14" fill="#546E7A" font-weight="700" text-anchor="middle">'+substrate+'</text>');
 
-  var surface=[];for(var i=0;i<=NSEG;i++)surface.push(y0);
-  function sfAt(x){var f=(x-MX)/CW,idx=f*NSEG,i=Math.floor(idx);if(i<0)return surface[0];if(i>=NSEG)return surface[NSEG];var fr=idx-i;return surface[i]*(1-fr)+surface[i+1]*fr}
+  // Surface tracking: an array of NSEG+1 heights across the chart width.
+  // Starts at yBottom (substrate top) and evolves as each layer is deposited.
+  var surface=[];for(var i=0;i<=NSEG;i++)surface.push(yBottom);
+  // Interpolate surface height at any pixel x using linear interpolation between sample points
+  function surfaceAt(x){var frac=(x-MX)/chartWidth,idx=frac*NSEG,i=Math.floor(idx);if(i<0)return surface[0];if(i>=NSEG)return surface[NSEG];var remainder=idx-i;return surface[i]*(1-remainder)+surface[i+1]*remainder}
 
-  // Build overlap groups: same y_bottom layers share baseline
-  var grps=[];for(var si=0;si<n;){var gs=si,gy=layersD[idxs[si]].y_bottom;
-    while(si<n&&layersD[idxs[si]].y_bottom===gy)si++;grps.push({s:gs,e:si-1});}
-  for(var gi=0;gi<grps.length;gi++){var g=grps[gi],isGrp=g.e>g.s;
-    var gBase=isGrp?surface.slice():null,gAccum=isGrp?surface.slice():null;
-    for(var si=g.s;si<=g.e;si++){
-      if(isGrp)surface=gBase.slice(); // reset to group baseline
-      var li=idxs[si],L=layersD[li],thickPx=(L.y_top-L.y_bottom)/yM*CH;
-    if(thickPx<0.5)thickPx=0.5;var layerHatch=hatch(L.name);
-    var flatTop=y0-(L.y_top/yM*CH),isConf=L.type==="conformal";
+  // Group layers by y_bottom — layers sharing the same bottom coordinate
+  // are in an "overlap group": they share a common baseline surface and each
+  // layer's surface is reset before rendering, then accumulated afterward.
+  var overlapGroups=[];for(var si=0;si<layerCount;){var groupStart=si,groupY=layersData[sortedIndices[si]].y_bottom;
+    while(si<layerCount&&layersData[sortedIndices[si]].y_bottom===groupY)si++;overlapGroups.push({start:groupStart,end:si-1});}
+  var labels=[];
 
-    // Find mask segments
-    var segs=[],st2=-1;
-    for(var i=0;i<=NSEG;i++){var nx=i/NSEG;if(inMsk(nx,L.mask)&&st2<0)st2=i;else if(!inMsk(nx,L.mask)&&st2>=0){segs.push({s:st2,e:i-1});st2=-1}}
-    if(st2>=0)segs.push({s:st2,e:NSEG});
+  // ── Helper: build list of [start, end] segment indices where mask is active ──
+  function buildMaskedSegments(maskName){
+    var segments=[],segStart=-1;
+    for(var i=0;i<=NSEG;i++){var nx=i/NSEG;if(inMsk(nx,maskName)&&segStart<0)segStart=i;else if(!inMsk(nx,maskName)&&segStart>=0){segments.push({start:segStart,end:i-1});segStart=-1}}
+    if(segStart>=0)segments.push({start:segStart,end:NSEG});
+    return segments;
+  }
 
-    var layerTop=9999;
-    for(var si2=0;si2<segs.length;si2++){var sg=segs[si2];
-      // Sample surface (blanket=flat top, conformal=follows surface)
-      var pts=[];for(var k=sg.s;k<=sg.e;k++){var x=MX+k/NSEG*CW,bot=surface[k],top=isConf?bot-thickPx:flatTop;if(top>=bot)top=bot-0.5;pts.push({x:x,top:top,bot:bot,k:k});}
+  // ── Helper: add bevel (45-degree sloped sidewall) points at mask edge ──
+  // When the surface has a step at a mask boundary, BEVEL inserts interpolated
+  // points so the layer sidewall slopes instead of being vertical.
+  function addBevelPoints(points,segmentIdx,segEnd,maxSeg,NSEG,flatTop,isConformal,layerThickPx){
+    var surfaceVal,bevelTop;
+    // Left edge bevel
+    if(segmentIdx>0){
+      var stepHeight=Math.abs(surface[segmentIdx]-surface[segmentIdx-1]);
+      var bevelWidth=stepHeight*BEVEL_COEFF;
+      if(stepHeight>0.5&&bevelWidth>1){
+        var leftEdgeX=MX+(segmentIdx-1)/NSEG*chartWidth,midX=leftEdgeX+bevelWidth;
+        if(midX>points[0].x)midX=points[0].x;
+        // Interpolate the top of the bevel: for blanket, linearly slope from surrounding surface to flatTop;
+        // for conformal, follow the adjacent surface offset by thickness.
+        surfaceVal=isConformal?surface[segmentIdx-1]-layerThickPx:surface[segmentIdx-1];
+        bevelTop=isConformal?surface[segmentIdx-1]-layerThickPx:surface[segmentIdx-1]+(flatTop-surface[segmentIdx-1])*(midX-leftEdgeX)/(points[0].x-leftEdgeX);
+        points.unshift({x:midX,top:bevelTop,bot:surfaceAt(midX)});
+        points.unshift({x:leftEdgeX,top:surfaceVal,bot:surface[segmentIdx-1]});}}
+    // Right edge bevel
+    if(segEnd<maxSeg){
+      var stepHeight=Math.abs(surface[segEnd]-surface[segEnd+1]);
+      var bevelWidth=stepHeight*BEVEL_COEFF;
+      if(stepHeight>0.5&&bevelWidth>1){
+        var rightEdgeX=MX+(segEnd+1)/NSEG*chartWidth,midXR=rightEdgeX-bevelWidth;
+        if(midXR<points[points.length-1].x)midXR=points[points.length-1].x;
+        surfaceVal=isConformal?surface[segEnd]-layerThickPx:surface[segEnd];
+        bevelTop=isConformal?surface[segEnd]-layerThickPx:surface[segEnd]+(flatTop-surface[segEnd])*(points[points.length-1].x-midXR)/(points[points.length-1].x-rightEdgeX);
+        points.push({x:midXR,top:bevelTop,bot:surfaceAt(midXR)});
+        points.push({x:rightEdgeX,top:surfaceVal,bot:surface[segEnd+1]});}}
+  }
 
-      // Bevel left edge (blanket: top slopes to flatTop; conformal: follows surface)
-      if(sg.s>0){var stepH=Math.abs(surface[sg.s]-surface[sg.s-1]);var bevelW=stepH*BEVEL;
-        if(stepH>0.5&&bevelW>1){var lX=MX+(sg.s-1)/NSEG*CW,xM=lX+bevelW;if(xM>pts[0].x)xM=pts[0].x;
-          var bvTL=isConf?surface[sg.s-1]-thickPx:surface[sg.s-1]+(flatTop-surface[sg.s-1])*(xM-lX)/(pts[0].x-lX);
-          pts.unshift({x:xM,top:bvTL,bot:sfAt(xM),k:-1});
-          pts.unshift({x:lX,top:isConf?surface[sg.s-1]-thickPx:surface[sg.s-1],bot:surface[sg.s-1],k:-2});}}
+  // ── Helper: convert point array to SVG path string (top edge then bottom edge) ──
+  function buildPathFromPoints(points){
+    var path="M "+points[0].x.toFixed(1)+" "+points[0].top.toFixed(1);
+    for(var k=1;k<points.length;k++)path+=" L "+points[k].x.toFixed(1)+" "+points[k].top.toFixed(1);
+    for(var k=points.length-1;k>=0;k--)path+=" L "+points[k].x.toFixed(1)+" "+points[k].bot.toFixed(1);
+    return path+" Z";
+  }
 
-      // Bevel right edge
-      if(sg.e<NSEG){var stepH2=Math.abs(surface[sg.e]-surface[sg.e+1]);var bevelW2=stepH2*BEVEL;
-        if(stepH2>0.5&&bevelW2>1){var rX=MX+(sg.e+1)/NSEG*CW,xMR=rX-bevelW2;if(xMR<pts[pts.length-1].x)xMR=pts[pts.length-1].x;
-          var bvTR=isConf?surface[sg.e]-thickPx:surface[sg.e]+(flatTop-surface[sg.e])*(pts[pts.length-1].x-xMR)/(pts[pts.length-1].x-rX);
-          pts.push({x:xMR,top:bvTR,bot:sfAt(xMR),k:-3});
-          pts.push({x:rX,top:isConf?surface[sg.e+1]-thickPx:surface[sg.e+1],bot:surface[sg.e+1],k:-4});}}
+  // ── Helper: update surface array after a layer segment is deposited ──
+  // Blanket mode: flatten the surface to flatTop (planarization).
+  // Conformal mode: subtract uniform thickness (follows the existing topography).
+  function updateSurfaceAfterSegment(segStart,segEnd,isConformal,layerThickPx,flatTop){
+    if(isConformal){
+      for(var k=segStart;k<=segEnd;k++)surface[k]=surface[k]-layerThickPx;}
+    else{
+      for(var k=segStart;k<=segEnd;k++)surface[k]=Math.min(surface[k],flatTop);}
+  }
 
-      // Build SVG path
-      var d="M "+pts[0].x.toFixed(1)+" "+pts[0].top.toFixed(1);
-      for(var k=1;k<pts.length;k++)d+=" L "+pts[k].x.toFixed(1)+" "+pts[k].top.toFixed(1);
-      for(var k=pts.length-1;k>=0;k--)d+=" L "+pts[k].x.toFixed(1)+" "+pts[k].bot.toFixed(1);
-      d+=" Z";
-      sv.push('<path d="'+d+'" fill="'+L.color+'" stroke="#37474F" stroke-width="0.6"/>');
-      if(layerHatch)sv.push('<path d="'+d+'" fill="'+layerHatch+'"/>');
-      // Update surface (blanket=flatten, conformal=trace)
-      if(isConf){for(var k=sg.s;k<=sg.e;k++)surface[k]=surface[k]-thickPx;}
-      else{for(var k=sg.s;k<=sg.e;k++)surface[k]=Math.min(surface[k],flatTop);}
-      if(pts[0].top<layerTop)layerTop=pts[0].top;
+  // ── Helper: find the widest mask segment for label placement ──
+  function findWidestSegment(segments){
+    var bestWidth=0,bestCenter=0,bestX1=0,bestX2=0,bestCenterY=0;
+    for(var i=0;i<segments.length;i++){
+      var seg=segments[i],x1=MX+seg.start/NSEG*chartWidth,x2=MX+seg.end/NSEG*chartWidth,width=x2-x1;
+      if(width>bestWidth){bestWidth=width;bestCenter=(x1+x2)/2;bestX1=x1;bestX2=x2;
+        var sumY=0;for(var k=seg.start;k<=seg.end;k++)sumY+=surface[k];bestCenterY=(sumY/(seg.end-seg.start+1))+seg.thickPx/2;}}
+    return {width:bestWidth,centerX:bestCenter,centerY:bestCenterY,x1:bestX1,x2:bestX2};
+  }
+
+  // ── Helper: place labels with auto-stagger to avoid vertical overlap ──
+  function renderLabels(labelArray){
+    if(!labelArray||labelArray.length===0)return;
+    labelArray.sort(function(a,b){return a.y-b.y;});
+    var lastY=-999,lastX=0,staggerCycle=0;
+    for(var i=0;i<labelArray.length;i++){
+      var label=labelArray[i],posY=label.y,posX=label.x;
+      var fontSize=11;
+      // If vertical gap to previous label is too small, stagger horizontally
+      // using a cyclic offset [-25%, 0%, +25%] of the segment width
+      if(Math.abs(posY-lastY)<fontSize+4){
+        staggerCycle=(staggerCycle+1)%3;
+        var offsetRatios=[0,-0.25,0.25];
+        posX=label.originalX+(label.width*offsetRatios[staggerCycle]);
+        posX=Math.max(label.x1+8,Math.min(label.x2-8,posX));
+      }else{staggerCycle=0;}
+      lastY=posY;lastX=posX;
+      svgLines.push('<text x="'+posX.toFixed(1)+'" y="'+posY.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="10" fill="'+(label.color&&lum(label.color)<130?"#FAFAFA":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+label.text+'</text>');
     }
+  }
 
-    // Label: name + thickness, centered. Auto-stagger if overlapping.
-    if(thickPx>=8&&layerTop<9999){
-      var thickNm=L.y_top-L.y_bottom,labelText=L.name+" "+thickNm+"nm";
-      var bestW=0,bestCX=0,bestCY=0,bestX1=0,bestX2=0;
-      for(var si2=0;si2<segs.length;si2++){
-        var sg=segs[si2],x1=MX+sg.s/NSEG*CW,x2=MX+sg.e/NSEG*CW,w=x2-x1;
-        if(w>bestW){bestW=w;bestCX=(x1+x2)/2;bestX1=x1;bestX2=x2;
-          var sumY=0;for(var k=sg.s;k<=sg.e;k++)sumY+=surface[k];bestCY=(sumY/(sg.e-sg.s+1))+thickPx/2;}}
-      if(!labels)var labels=[];
-      if(typeof labels==="undefined")labels=[];
-labels.push({n:labelText,c:bestCX,y:bestCY,w:bestW,x1:bestX1,x2:bestX2,color:L.color,thick:thickPx});}
-    // Accumulate surface for overlap group
-    if(isGrp){for(var k=0;k<=NSEG;k++)gAccum[k]=Math.min(gAccum[k],surface[k]);}
-    seams.push({y:surface[NSEG],label:L.y_top+" nm"});}
-    if(isGrp)surface=gAccum;}
+  // ── Main layer rendering loop ──
+  for(var gi=0;gi<overlapGroups.length;gi++){
+    var group=overlapGroups[gi],isOverlapGroup=group.end>group.start;
+    var groupBaseline=isOverlapGroup?surface.slice():null;
+    var groupAccumulated=isOverlapGroup?surface.slice():null;
+    for(var si=group.start;si<=group.end;si++){
+      // For overlap groups, reset surface to the group's common baseline
+      // so each layer in the group sees the same starting topography
+      if(isOverlapGroup)surface=groupBaseline.slice();
+      var layerIdx=sortedIndices[si],layer=layersData[layerIdx];
+      var thickPx=(layer.y_top-layer.y_bottom)/maxTop*chartHeight;
+      if(thickPx<0.5)thickPx=0.5;
+      var layerHatch=getHatch(layer.name);
+      // flatTop: the y-pixel of a perfectly flat layer top (blanket mode)
+      var flatTop=yBottom-(layer.y_top/maxTop*chartHeight);
+      var isConformal=layer.type==="conformal";
+      // Compute thickness in nanometers for labels
+      var thicknessNm=layer.y_top-layer.y_bottom;
+
+      // Find masked segments for this layer
+      var segments=buildMaskedSegments(layer.mask);
+      var layerTopmost=9999;
+
+      for(var segIdx=0;segIdx<segments.length;segIdx++){
+        var seg=segments[segIdx];
+        // Sample the surface: at each sample point, compute top (depends on
+        // mode) and bottom (current surface). For blanket the top is flatTop;
+        // for conformal the top follows the surface minus uniform thickness.
+        var points=[];for(var k=seg.start;k<=seg.end;k++){
+          var xPos=MX+k/NSEG*chartWidth,bot=surface[k];
+          var top=isConformal?bot-thickPx:flatTop;
+          if(top>=bot)top=bot-0.5;  // ensure positive thickness
+          points.push({x:xPos,top:top,bot:bot});}
+
+        // Add bevel (45-degree sloped sidewall) at mask edges
+        addBevelPoints(points,seg.start,seg.end,NSEG,NSEG,flatTop,isConformal,thickPx);
+
+        // Build and emit the SVG path for this segment
+        var pathStr=buildPathFromPoints(points);
+        svgLines.push('<path d="'+pathStr+'" fill="'+layer.color+'" stroke="#37474F" stroke-width="0.6"/>');
+        if(layerHatch)svgLines.push('<path d="'+pathStr+'" fill="'+layerHatch+'"/>');
+
+        // Update surface after deposition
+        updateSurfaceAfterSegment(seg.start,seg.end,isConformal,thickPx,flatTop);
+
+        if(points[0].top<layerTopmost)layerTopmost=points[0].top;
+      }
+
+      // Collect label info: best segment (widest), will place in second pass
+      if(thickPx>=8&&layerTopmost<9999){
+        var labelText=layer.name+" "+thicknessNm+"nm";
+        var bestSeg=findWidestSegment(segments);
+        labels.push({text:labelText,originalX:bestSeg.centerX,x:bestSeg.centerX,y:bestSeg.centerY,width:bestSeg.width,x1:bestSeg.x1,x2:bestSeg.x2,color:layer.color,thick:thickPx});}
+
+      // For overlap groups, accumulate the minimum surface (union of all layers)
+      if(isOverlapGroup){for(var k=0;k<=NSEG;k++)groupAccumulated[k]=Math.min(groupAccumulated[k],surface[k]);}
+      seamLines.push({y:surface[NSEG],label:layer.y_top+" nm"});}
+    // After processing an overlap group, restore the accumulated surface
+    if(isOverlapGroup)surface=groupAccumulated;}
 
   // Second pass: place labels with overlap avoidance
-  if(typeof labels!=="undefined"&&labels.length>0){
-    labels.sort(function(a,b){return a.y-b.y;});
-    var lastY=-999,lastX=0,stagger=0;
-    for(var i=0;i<labels.length;i++){
-      var lb=labels[i],py=lb.y,px=lb.c;
-      var fontH=11;
-      if(Math.abs(py-lastY)<fontH+4){
-        // Overlap: stagger horizontally within the layer's width
-        stagger=(stagger+1)%3;
-        var offsets=[0,-0.25,0.25];
-        px=lb.c+(lb.w*offsets[stagger]);
-        px=Math.max(lb.x1+8,Math.min(lb.x2-8,px));
-      }else{stagger=0;}
-      lastY=py;lastX=px;
-      sv.push('<text x="'+px.toFixed(1)+'" y="'+py.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="10" fill="'+(lb.color&&lum(lb.color)<130?"#FAFAFA":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+lb.n+'</text>');
-    }}
+  renderLabels(labels);
 
-  // Seam lines + labels on right
-  for(var i=0;i<seams.length;i++){var s=seams[i];
-    sv.push('<line x1="'+(rx-6)+'" y1="'+s.y.toFixed(1)+'" x2="'+(rx+120)+'" y2="'+s.y.toFixed(1)+'" stroke="#CFD8DC" stroke-width="0.4" stroke-dasharray="3,4"/>');
-    sv.push('<text x="'+(rx+116)+'" y="'+(s.y-3).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="8" fill="#B0BEC5" text-anchor="end">'+s.label+'</text>');}
-  sv.push('<line x1="'+(rx-6)+'" y1="'+MY+'" x2="'+(rx-6)+'" y2="'+(y0+SH)+'" stroke="#CFD8DC" stroke-width="0.8" stroke-dasharray="4,4"/>');
-  return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'">\n'+sv.join("\n")+"\n</svg>";
+  // Seam lines (horizontal markers at each layer boundary) + labels on right
+  for(var i=0;i<seamLines.length;i++){var seam=seamLines[i];
+    svgLines.push('<line x1="'+(seamX-6)+'" y1="'+seam.y.toFixed(1)+'" x2="'+(seamX+120)+'" y2="'+seam.y.toFixed(1)+'" stroke="#CFD8DC" stroke-width="0.4" stroke-dasharray="3,4"/>');
+    svgLines.push('<text x="'+(seamX+116)+'" y="'+(seam.y-3).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="8" fill="#B0BEC5" text-anchor="end">'+seam.label+'</text>');}
+  svgLines.push('<line x1="'+(seamX-6)+'" y1="'+MY+'" x2="'+(seamX-6)+'" y2="'+(yBottom+SH)+'" stroke="#CFD8DC" stroke-width="0.8" stroke-dasharray="4,4"/>');
+  return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'">\n'+svgLines.join("\n")+"\n</svg>";
 }
 
 // Presets
@@ -264,8 +349,8 @@ var P={
 function mkRow(idx,data){
   var name=data?data[0]:"SiO2",yB=data?data[1]:0,yT=data?data[2]:100,msk=data?data[3]:"none",tp=data?data[4]:"blanket",ac=col(name);
   var div=document.createElement("div");div.className="layer-row";div.draggable=true;
-  var ml=["none","sti","gate","contact","via","active","trench","mesa","fin","half","center","ridge","gsg","via2","grating"],mo="";
-  for(var i=0;i<ml.length;i++)mo+='<option value="'+ml[i]+'"'+(ml[i]===msk?" selected":"")+'>'+(ml[i]==="none"?"无":ml[i])+"</option>";
+  var masks=["none","sti","gate","contact","via","active","trench","mesa","fin","half","center","ridge","gsg","via2","grating"],mo="";
+  for(var i=0;i<masks.length;i++)mo+='<option value="'+masks[i]+'"'+(masks[i]===msk?" selected":"")+'>'+(masks[i]==="none"?"无":masks[i])+"</option>";
   div.innerHTML='<span class="idx">'+(idx+1)+"</span>"
     +'<input class="mat-input" value="'+name.replace(/"/g,"&quot;")+'" placeholder="材料名" autocomplete="off">'
     +'<input type="color" class="color-pick" value="'+ac+'" title="自定义颜色">'
@@ -275,78 +360,78 @@ function mkRow(idx,data){
     +'<button class="type-toggle'+(tp==="conformal"?" conformal":"")+'">'+(tp==="conformal"?"Conformal":"Planar")+"</button>"
     +'<button class="hide-btn" title="隐藏/显示此层">👁</button>'
     +'<button class="del-btn">✕</button>';
-  var mi=div.querySelector(".mat-input"),cp=div.querySelector(".color-pick"),tt=div.querySelector(".type-toggle"),hb=div.querySelector(".hide-btn");
-  mi.addEventListener("input",function(){cp.value=col(mi.value.trim())});
-  mi.addEventListener("focus",function(){shwSug(mi)});mi.addEventListener("blur",function(){setTimeout(function(){sug.style.display="none"},150)});
-  mi.addEventListener("keydown",function(e){if(e.key==="Enter")gen()});
-  tt.addEventListener("click",function(){var c=tt.classList.toggle("conformal");tt.textContent=c?"Conformal":"Planar"});
-  hb.addEventListener("click",function(){var h=div.classList.toggle("hidden-row");hb.classList.toggle("hidden-layer");hb.textContent=h?"👁‍🗨":"👁";gen()});
-  div.querySelector(".del-btn").addEventListener("click",function(){for(var i=0;i<layers.length;i++){if(layers[i].row===div){layers.splice(i,1);break}}table.removeChild(div);renum();layCnt.textContent=layers.length;gen()});
+  var materialInput=div.querySelector(".mat-input"),colorPicker=div.querySelector(".color-pick"),typeToggle=div.querySelector(".type-toggle"),hideBtn=div.querySelector(".hide-btn");
+  materialInput.addEventListener("input",function(){colorPicker.value=col(materialInput.value.trim())});
+  materialInput.addEventListener("focus",function(){shwSug(materialInput)});materialInput.addEventListener("blur",function(){setTimeout(function(){suggestPopup.style.display="none"},150)});
+  materialInput.addEventListener("keydown",function(e){if(e.key==="Enter")gen()});
+  typeToggle.addEventListener("click",function(){var c=typeToggle.classList.toggle("conformal");typeToggle.textContent=c?"Conformal":"Planar"});
+  hideBtn.addEventListener("click",function(){var h=div.classList.toggle("hidden-row");hideBtn.classList.toggle("hidden-layer");hideBtn.textContent=h?"👁‍🗨":"👁";gen()});
+  div.querySelector(".del-btn").addEventListener("click",function(){for(var i=0;i<layers.length;i++){if(layers[i].row===div){layers.splice(i,1);break}}layerTable.removeChild(div);renum();layerCount.textContent=layers.length;gen()});
   div.addEventListener("dragstart",function(e){div.classList.add("dragging");e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","")});
   div.addEventListener("dragend",function(){div.classList.remove("dragging")});
   div.addEventListener("dragover",function(e){e.preventDefault();div.classList.add("drag-over")});
   div.addEventListener("dragleave",function(){div.classList.remove("drag-over")});
   div.addEventListener("drop",function(e){e.preventDefault();div.classList.remove("drag-over");
-    var dr=table.querySelector(".dragging");if(!dr||dr===div)return;
-    var all=table.querySelectorAll(".layer-row"),from=-1,to=-1;
-    for(var i=0;i<all.length;i++){if(all[i]===dr)from=i;if(all[i]===div)to=i}
+    var draggedRow=layerTable.querySelector(".dragging");if(!draggedRow||draggedRow===div)return;
+    var all=layerTable.querySelectorAll(".layer-row"),from=-1,to=-1;
+    for(var i=0;i<all.length;i++){if(all[i]===draggedRow)from=i;if(all[i]===div)to=i}
     if(from>=0&&to>=0&&from!==to){var it=layers.splice(from,1)[0];layers.splice(to,0,it);
-      if(from<to)table.insertBefore(dr,div.nextSibling);else table.insertBefore(dr,div);renum();gen()}});
+      if(from<to)layerTable.insertBefore(draggedRow,div.nextSibling);else layerTable.insertBefore(draggedRow,div);renum();gen()}});
   return div;}
-function renum(){var rs=table.querySelectorAll(".layer-row");for(var i=0;i<rs.length;i++)rs[i].querySelector(".idx").textContent=i+1}
-function addLayer(data){var r=mkRow(layers.length,data||null);table.appendChild(r);layers.push({row:r});layCnt.textContent=layers.length}
-function clearAll(){layers=[];table.innerHTML="";layCnt.textContent=0;prev.innerHTML='<div class="empty-hint"><span>📐</span>输入膜层参数，点击生成图表</div>';stL.textContent="层数: —";stT.textContent="总厚: —";stS.innerHTML="已清空"}
-function loadPreset(name){var p=P[name];if(!p)return;subInp.value=p.sub;layers=[];table.innerHTML="";for(var i=0;i<p.layers.length;i++)addLayer(p.layers[i]);gen()}
-function gather(){var d=[];for(var i=0;i<layers.length;i++){var r=layers[i].row;if(!r)continue;if(r.classList.contains("hidden-row"))continue;
-  var nm=(r.querySelector(".mat-input").value||"").trim()||"Layer",yb=parseFloat(r.querySelector(".ybot-input").value)||0,yt=parseFloat(r.querySelector(".ytop-input").value)||100;
-  if(yt<=yb)yt=yb+1;var mk=r.querySelector(".mask-select").value,tp=r.querySelector(".type-toggle").classList.contains("conformal")?"conformal":"blanket";
-  var cl=r.querySelector(".color-pick").value||col(nm);d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl});}return d;}
-function gen(){try{var d=gather();if(d.length===0){prev.innerHTML='<div class="empty-hint"><span>⚠️</span>请至少添加一层膜层</div>';stS.innerHTML='<span class="err">无膜层</span>';return}
-  var sub=(subInp.value||"").trim()||"p-Si (100)",svg=render(d,sub,1000,720,80,50,70);prev.innerHTML=svg;
-  var my=0;for(var i=0;i<d.length;i++){if(d[i].y_top>my)my=d[i].y_top}stL.textContent="层数: "+d.length;stT.textContent="max y: "+(my/1000).toFixed(2)+" μm";stS.innerHTML='<span class="ok">✅</span>';}
-  catch(e){stS.innerHTML='<span class="err">'+e.message+"</span>";prev.innerHTML='<div class="empty-hint"><span>❌</span>'+e.message+"</div>"}}
+function renum(){var rows=layerTable.querySelectorAll(".layer-row");for(var i=0;i<rows.length;i++)rows[i].querySelector(".idx").textContent=i+1}
+function addLayer(data){var row=mkRow(layers.length,data||null);layerTable.appendChild(row);layers.push({row:row});layerCount.textContent=layers.length}
+function clearAll(){layers=[];layerTable.innerHTML="";layerCount.textContent=0;previewDiv.innerHTML='<div class="empty-hint"><span>📐</span>输入膜层参数，点击生成图表</div>';statusLayers.textContent="层数: —";statusThickness.textContent="总厚: —";statusMsg.innerHTML="已清空"}
+function loadPreset(name){var p=P[name];if(!p)return;substrateInput.value=p.sub;layers=[];layerTable.innerHTML="";for(var i=0;i<p.layers.length;i++)addLayer(p.layers[i]);gen()}
+function gather(){var d=[];for(var i=0;i<layers.length;i++){var row=layers[i].row;if(!row)continue;if(row.classList.contains("hidden-row"))continue;
+  var nm=(row.querySelector(".mat-input").value||"").trim()||"Layer",yb=parseFloat(row.querySelector(".ybot-input").value)||0,yt=parseFloat(row.querySelector(".ytop-input").value)||100;
+  if(yt<=yb)yt=yb+1;var mk=row.querySelector(".mask-select").value,tp=row.querySelector(".type-toggle").classList.contains("conformal")?"conformal":"blanket";
+  var cl=row.querySelector(".color-pick").value||col(nm);d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl});}return d;}
+function gen(){try{var data=gather();if(data.length===0){previewDiv.innerHTML='<div class="empty-hint"><span>⚠️</span>请至少添加一层膜层</div>';statusMsg.innerHTML='<span class="err">无膜层</span>';return}
+  var sub=(substrateInput.value||"").trim()||"p-Si (100)",svg=render(data,sub,1000,720,80,50,70);previewDiv.innerHTML=svg;
+  var maxY=0;for(var i=0;i<data.length;i++){if(data[i].y_top>maxY)maxY=data[i].y_top}statusLayers.textContent="层数: "+data.length;statusThickness.textContent="max y: "+(maxY/1000).toFixed(2)+" μm";statusMsg.innerHTML='<span class="ok">✅</span>';}
+  catch(e){statusMsg.innerHTML='<span class="err">'+e.message+"</span>";previewDiv.innerHTML='<div class="empty-hint"><span>❌</span>'+e.message+"</div>"}}
 function expt(){
-  var s=prev.querySelector("svg");
-  if(!s){t("请先生成图表",false);return}
-  var d=(new XMLSerializer()).serializeToString(s);
-  var b=new Blob([d],{type:"image/svg+xml"});
+  var svgElem=previewDiv.querySelector("svg");
+  if(!svgElem){toast("请先生成图表",false);return}
+  var svgStr=(new XMLSerializer()).serializeToString(svgElem);
+  var blobData=new Blob([svgStr],{type:"image/svg+xml"});
   // 优先用系统原生保存对话框（支持选文件夹+重命名）
   if(window.showSaveFilePicker){
     try{
       var opts={suggestedName:"stack_diagram.svg",types:[{description:"SVG Image",accept:{"image/svg+xml":[".svg"]}}]};
       window.showSaveFilePicker(opts).then(function(handle){
         handle.createWritable().then(function(w){
-          w.write(b).then(function(){w.close();t("✅ SVG 已保存")});
+          w.write(blobData).then(function(){w.close();toast("✅ SVG 已保存")});
         });
-      }).catch(function(e){if(e.name!=="AbortError")t("保存失败: "+e,false)});
-    }catch(e){fallbackSave(b);}
-  }else{fallbackSave(b);}
+      }).catch(function(e){if(e.name!=="AbortError")toast("保存失败: "+e,false)});
+    }catch(e){fallbackSave(blobData);}
+  }else{fallbackSave(blobData);}
 }
-function fallbackSave(b){
-  var ov=document.getElementById("save-overlay"),inp=document.getElementById("save-filename");
-  inp.value="stack_diagram.svg";ov.classList.add("show");
-  inp.focus();inp.select();
+function fallbackSave(blobData){
+  var overlay=document.getElementById("save-overlay"),fileNameInput=document.getElementById("save-filename");
+  fileNameInput.value="stack_diagram.svg";overlay.classList.add("show");
+  fileNameInput.focus();fileNameInput.select();
   document.getElementById("save-confirm").onclick=function(){
-    var n=(inp.value||"").trim()||"stack_diagram.svg";
-    if(n.indexOf(".svg")===-1)n+=".svg";
-    ov.classList.remove("show");
-    var u=URL.createObjectURL(b),a=document.createElement("a");
-    a.href=u;a.download=n;document.body.appendChild(a);a.click();
-    document.body.removeChild(a);URL.revokeObjectURL(u);t("✅ 已导出: "+n);
+    var fileName=(fileNameInput.value||"").trim()||"stack_diagram.svg";
+    if(fileName.indexOf(".svg")===-1)fileName+=".svg";
+    overlay.classList.remove("show");
+    var url=URL.createObjectURL(blobData),anchor=document.createElement("a");
+    anchor.href=url;anchor.download=fileName;document.body.appendChild(anchor);anchor.click();
+    document.body.removeChild(anchor);URL.revokeObjectURL(url);toast("✅ 已导出: "+fileName);
   };
-  document.getElementById("save-cancel").onclick=function(){ov.classList.remove("show")};
-  ov.onclick=function(e){if(e.target===ov)ov.classList.remove("show")};
+  document.getElementById("save-cancel").onclick=function(){overlay.classList.remove("show")};
+  overlay.onclick=function(e){if(e.target===overlay)overlay.classList.remove("show")};
 }
-function shwSug(inp){curInput=inp;var v=(inp.value||"").toLowerCase(),m=[],ml=["Si","SiO2","SiN","Poly-Si","Al","Cu","W","Ti","TiN","TaN","Al2O3","HfO2","TEOS","BPSG","PSG","SOG","PR","ARC","GaN","SiC","AlN","IMD","ILD","Passivation","SiGe","Ge","CoSi2","NiSi","ITO","ZrO2","Ru","LiNbO3","AlGaAs","GaAs","InP","InGaAs","Au","Pt","Cr","Ni"];
-  for(var i=0;i<ml.length;i++){if(ml[i].toLowerCase().indexOf(v)>=0)m.push(ml[i])}m=m.slice(0,8);
-  if(m.length===0||(m.length===1&&m[0].toLowerCase()===v)){sug.style.display="none";return}
-  var h="";for(var i=0;i<m.length;i++){var c=col(m[i]);h+='<li data-val="'+m[i].replace(/"/g,"&quot;")+'"><span class="sw" style="background:'+c+'"></span>'+m[i]+"</li>"}
-  sug.innerHTML=h;var r=inp.getBoundingClientRect();sug.style.top=(r.bottom+4)+"px";sug.style.left=r.left+"px";sug.style.display="block"}
-sug.addEventListener("mousedown",function(e){var li=e.target.closest("li");if(li&&curInput){curInput.value=li.getAttribute("data-val")||"";var r=curInput.closest(".layer-row");if(r){var cp=r.querySelector(".color-pick");if(cp)cp.value=col(curInput.value)}curInput.focus();sug.style.display="none";e.preventDefault()}});
-var hnd=document.getElementById("resize-handle"),fpn=document.getElementById("form-panel"),rsz=false;
-hnd.addEventListener("mousedown",function(e){rsz=true;e.preventDefault()});
-document.addEventListener("mousemove",function(e){if(!rsz)return;fpn.style.width=Math.max(420,Math.min(700,e.clientX))+"px"});
-document.addEventListener("mouseup",function(){rsz=false});
+function shwSug(inp){currentInput=inp;var val=(inp.value||"").toLowerCase(),matches=[],materials=["Si","SiO2","SiN","Poly-Si","Al","Cu","W","Ti","TiN","TaN","Al2O3","HfO2","TEOS","BPSG","PSG","SOG","PR","ARC","GaN","SiC","AlN","IMD","ILD","Passivation","SiGe","Ge","CoSi2","NiSi","ITO","ZrO2","Ru","LiNbO3","AlGaAs","GaAs","InP","InGaAs","Au","Pt","Cr","Ni"];
+  for(var i=0;i<materials.length;i++){if(materials[i].toLowerCase().indexOf(val)>=0)matches.push(materials[i])}matches=matches.slice(0,8);
+  if(matches.length===0||(matches.length===1&&matches[0].toLowerCase()===val)){suggestPopup.style.display="none";return}
+  var h="";for(var i=0;i<matches.length;i++){var c=col(matches[i]);h+='<li data-val="'+matches[i].replace(/"/g,"&quot;")+'"><span class="sw" style="background:'+c+'"></span>'+matches[i]+"</li>"}
+  suggestPopup.innerHTML=h;var rect=inp.getBoundingClientRect();suggestPopup.style.top=(rect.bottom+4)+"px";suggestPopup.style.left=rect.left+"px";suggestPopup.style.display="block"}
+suggestPopup.addEventListener("mousedown",function(e){var li=e.target.closest("li");if(li&&currentInput){currentInput.value=li.getAttribute("data-val")||"";var row=currentInput.closest(".layer-row");if(row){var cp=row.querySelector(".color-pick");if(cp)cp.value=col(currentInput.value)}currentInput.focus();suggestPopup.style.display="none";e.preventDefault()}});
+var resizeHandle=document.getElementById("resize-handle"),formPanel=document.getElementById("form-panel"),resizing=false;
+resizeHandle.addEventListener("mousedown",function(e){resizing=true;e.preventDefault()});
+document.addEventListener("mousemove",function(e){if(!resizing)return;formPanel.style.width=Math.max(420,Math.min(700,e.clientX))+"px"});
+document.addEventListener("mouseup",function(){resizing=false});
 document.getElementById("btn-gen").addEventListener("click",gen);
 document.getElementById("btn-clear").addEventListener("click",clearAll);
 document.getElementById("btn-add").addEventListener("click",function(){addLayer()});
