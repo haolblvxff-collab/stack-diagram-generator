@@ -20,9 +20,9 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
 .sub-row label{font-size:12px;color:var(--text2);white-space:nowrap;font-weight:600;min-width:52px}
 .sub-row input{flex:1;padding:6px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none}
 .sub-row input:focus{border-color:var(--accent)}
-.table-head{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 52px 28px 38px;gap:2px;padding:5px 14px;font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
+.table-head{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 32px 36px 52px 28px 38px;gap:2px;padding:5px 14px;font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
 .table-wrap{flex:1;overflow-y:auto;background:var(--bg);min-height:0}
-.layer-row{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 52px 28px 38px;gap:2px;padding:3px 14px;align-items:center;border-bottom:1px solid rgba(48,54,61,.5)}
+.layer-row{display:grid;grid-template-columns:24px 1fr 50px 72px 72px 80px 32px 36px 52px 28px 38px;gap:2px;padding:3px 14px;align-items:center;border-bottom:1px solid rgba(48,54,61,.5)}
 .layer-row:hover{background:var(--row-hover)}
 .layer-row.hidden-row{opacity:.35}
 .layer-row input,.layer-row select{padding:5px 4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;font-family:inherit;outline:none;width:100%}
@@ -87,8 +87,7 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
   <div class="panel-form" id="form-panel">
     <div class="panel-head">膜层参数 <span class="count" id="layer-count">0</span></div>
     <div class="sub-row"><label>衬底</label><input type="text" id="substrate" value="p-Si (100)" placeholder="p-Si (100)"></div>
-
-    <div class="table-head"><span>#</span><span>材料</span><span>颜色</span><span>y_bot</span><span>y_top</span><span>Mask</span><span>类型</span><span></span><span></span></div>
+    <div class="table-head"><span>#</span><span>材料</span><span>颜色</span><span>y_bot</span><span>y_top</span><span>Mask</span><span>缩放</span><span>字号</span><span>类型</span><span></span><span></span></div>
     <div class="table-wrap" id="layer-table"></div>
     <div class="add-row"><button id="btn-add">＋ 添加膜层</button></div>
     <div class="actions"><button id="btn-gen" class="btn-gen">⚡ 生成图表</button><button id="btn-clear" class="btn-clear">清空</button></div>
@@ -155,9 +154,8 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   function getHatch(nm){var n=san(nm);if(n.indexOf("sio2")>=0||n.indexOf("teos")>=0||n.indexOf("bpsg")>=0||n.indexOf("psg")>=0||n.indexOf("sog")>=0)return"url(#hOx)";if(n.indexOf("sin")>=0)return"url(#hSiN)";if(n.indexOf("al")>=0||n.indexOf("cu")>=0||n.indexOf("w")>=0||n.indexOf("ti")>=0||n.indexOf("au")>=0||n.indexOf("metal")>=0)return"url(#hMet)";if(n.indexOf("poly")>=0||n.indexOf("pr")>=0)return"url(#hPoly)";if(n.indexOf("si")>=0)return"url(#hSi)";return null;}
 
   var subColor=col(substrate),subHatch=getHatch(substrate);
-  var svg=[],seamX=MX+chartWidth+50;
-  var seams=[{y:yBottom,label:"0 nm"}];
-
+  var svg=[];
+  
   // Surface tracking: NSEG+1 sample points, linearly interpolated
   var surface=[];for(var i=0;i<=NSEG;i++)surface.push(yBottom);
   function surfAt(x){var f=(x-MX)/chartWidth,idx=f*NSEG,i=Math.floor(idx);if(i<0)return surface[0];if(i>=NSEG)return surface[NSEG];var fr=idx-i;return surface[i]*(1-fr)+surface[i+1]*fr}
@@ -166,7 +164,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   svg.push('<defs>'+hatches.join("")+'</defs>');
   svg.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+subColor+'"/>');
   if(subHatch)svg.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+subHatch+'"/>');
-  svg.push('<text x="'+(W/2)+'" y="'+(yBottom+SH/2+5).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="14" fill="#546E7A" font-weight="700" text-anchor="middle">'+substrate+'</text>');
+  svg.push('<text x="'+(W/2)+'" y="'+(yBottom+SH/2+5).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="18" fill="#546E7A" font-weight="700" text-anchor="middle">'+substrate+'</text>');
 
   // Overlap groups: layers sharing y_bottom render from a common baseline
   var groups=[];for(var si=0;si<layerCount;){var gs=si,gy=layersData[sorted[si]].y_bottom;
@@ -181,9 +179,12 @@ function render(layersData,substrate,W,H,MX,MY,SH){
       if(isGrp)surface=gBase.slice();
       var li=sorted[si],L=layersData[li];
       var thickPx=(L.y_top-L.y_bottom)/maxTop*chartHeight;
+      var sc=(L.scale!=null)?L.scale/100:1;
+      if(sc!==1)thickPx=thickPx*sc;
       if(thickPx<0.5)thickPx=0.5;
       var hatch=getHatch(L.name);
-      var flatTop=yBottom-(L.y_top/maxTop*chartHeight);
+      var scaledYTop=L.y_bottom+(L.y_top-L.y_bottom)*sc;
+      var flatTop=yBottom-(scaledYTop/maxTop*chartHeight);
       var isConf=L.type==="conformal";
 
       // Find mask segments (contiguous sample points where mask is active)
@@ -223,7 +224,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
       if(isGrp){for(var k=0;k<=NSEG;k++)gAccum[k]=Math.min(gAccum[k],surface[k]);}
 
       // Label: placed in widest segment, auto-staggered if overlapping
-      if(thickPx>=8){
+      var lblMin=L.fontSize?L.fontSize:14;if(thickPx>=lblMin){
         var thickNm=L.y_top-L.y_bottom,txt=L.name+" "+thickNm+"nm";
         var bw=0,bcx=0,bcy=0,bx1=0,bx2=0;
         for(var si3=0;si3<segs.length;si3++){
@@ -231,11 +232,9 @@ function render(layersData,substrate,W,H,MX,MY,SH){
           if(w>bw){bw=w;bcx=(x1+x2)/2;bx1=x1;bx2=x2;
             var sy=0;for(var k=sg.s;k<=sg.e;k++)sy+=surface[k];bcy=sy/(sg.e-sg.s+1)+thickPx/2;}
         }
-        labels.push({n:txt,c:bcx,y:bcy,w:bw,x1:bx1,x2:bx2,color:L.color,thick:thickPx});
+        labels.push({n:txt,c:bcx,y:bcy,w:bw,x1:bx1,x2:bx2,color:L.color,thick:thickPx,fs:L.fontSize||14});
       }
-      // Seam: right-edge height marker (shows post-layer surface at full width)
-      seams.push({y:surface[NSEG],label:L.y_top+" nm"});
-    }
+          }
     if(isGrp)surface=gAccum;
   }
 
@@ -245,19 +244,14 @@ function render(layersData,substrate,W,H,MX,MY,SH){
     var lastY=-999,stag=0;
     for(var i=0;i<labels.length;i++){
       var lb=labels[i],py=lb.y,px=lb.c;
-      if(Math.abs(py-lastY)<15){stag=(stag+1)%3;var off=[0,-0.25,0.25];px=lb.c+(lb.w*off[stag]);px=Math.max(lb.x1+8,Math.min(lb.x2-8,px));}else{stag=0;}
+      if(Math.abs(py-lastY)<lblMin*1.4){stag=(stag+1)%3;var off=[0,-0.25,0.25];px=lb.c+(lb.w*off[stag]);px=Math.max(lb.x1+8,Math.min(lb.x2-8,px));}else{stag=0;}
       lastY=py;
-      svg.push('<text x="'+px.toFixed(1)+'" y="'+py.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="10" fill="'+(lb.color&&lum(lb.color)<160?"#fff":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+lb.n+'</text>');
+      svg.push('<text x="'+px.toFixed(1)+'" y="'+py.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="'+(lb.fs||14)+'" fill="'+(lb.color&&lum(lb.color)<160?"#fff":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+lb.n+'</text>');
     }
   }
 
-  // Seam lines on right side: horizontal markers at each layer boundary
-  for(var i=0;i<seams.length;i++){var s=seams[i];
-    svg.push('<line x1="'+(seamX-6)+'" y1="'+s.y.toFixed(1)+'" x2="'+(seamX+120)+'" y2="'+s.y.toFixed(1)+'" stroke="#b0b0b0" stroke-width="0.4" stroke-dasharray="3,4"/>');
-    svg.push('<text x="'+(seamX+116)+'" y="'+(s.y-3).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="8" fill="#999" text-anchor="end">'+s.label+'</text>');}
-  svg.push('<line x1="'+(seamX-6)+'" y1="'+MY+'" x2="'+(seamX-6)+'" y2="'+(yBottom+SH)+'" stroke="#b0b0b0" stroke-width="0.8" stroke-dasharray="4,4"/>');
 
-  return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'">\n'+svg.join("\n")+"\n</svg>";
+  return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="100%" height="100%" preserveAspectRatio="xMidYMin meet">\n'+svg.join("\n")+"\n</svg>";
 }
 
 // Presets
@@ -279,7 +273,7 @@ var P={
 
 // UI
 function mkRow(idx,data){
-  var name=data?data[0]:"SiO2",yB=data?data[1]:0,yT=data?data[2]:100,msk=data?data[3]:"none",tp=data?data[4]:"blanket",ac=col(name);
+  var name=data?data[0]:"SiO2",yB=data?data[1]:0,yT=data?data[2]:100,msk=data?data[3]:"none",tp=data?data[4]:"blanket",fsz=data?data[5]:14,scl=data?data[6]:100,ac=col(name);
   var div=document.createElement("div");div.className="layer-row";div.draggable=true;
   var masks=["none","sti","gate","contact","via","active","trench","mesa","fin","half","center","ridge","gsg","via2","grating"],mo="";
   for(var i=0;i<masks.length;i++)mo+='<option value="'+masks[i]+'"'+(masks[i]===msk?" selected":"")+'>'+(masks[i]==="none"?"无":masks[i])+"</option>";
@@ -289,6 +283,8 @@ function mkRow(idx,data){
     +'<input class="ybot-input" type="number" value="'+yB+'" placeholder="0" min="0" step="1">'
     +'<input class="ytop-input" type="number" value="'+yT+'" placeholder="100" min="1" step="1">'
     +'<select class="mask-select">'+mo+"</select>"
+    +'<input class="scl-input" type="number" value="'+scl+'" placeholder="100" min="1" max="500" step="5" title="缩放 %">'
+    +'<input class="fs-input" type="number" value="'+fsz+'" placeholder="14" min="6" max="48" step="1" title="标签字号">'
 
     +'<button class="type-toggle'+(tp==="conformal"?" conformal":"")+'">'+(tp==="conformal"?"Conformal":"Planar")+"</button>"
     +'<button class="hide-btn" title="隐藏/显示此层">👁</button>'
@@ -319,9 +315,11 @@ function gather(){var d=[];for(var i=0;i<layers.length;i++){var row=layers[i].ro
   var nm=(row.querySelector(".mat-input").value||"").trim()||"Layer",yb=parseFloat(row.querySelector(".ybot-input").value)||0,yt=parseFloat(row.querySelector(".ytop-input").value)||100;
   if(yt<=yb)yt=yb+1;var mk=row.querySelector(".mask-select").value,tp=row.querySelector(".type-toggle").classList.contains("conformal")?"conformal":"blanket";
   var cl=row.querySelector(".color-pick").value||col(nm);
-  d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl});}return d;}
+  var fs=parseInt(row.querySelector(".fs-input").value)||14;if(fs<6)fs=6;if(fs>48)fs=48;
+  var scl=parseFloat(row.querySelector(".scl-input").value);if(isNaN(scl)||scl<1)scl=100;if(scl>500)scl=500;
+  d.push({name:nm,y_bottom:yb,y_top:yt,mask:mk,type:tp,color:cl,fontSize:fs,scale:scl});}return d;}
 function gen(){try{var data=gather();if(data.length===0){previewDiv.innerHTML='<div class="empty-hint"><span>⚠️</span>请至少添加一层膜层</div>';statusMsg.innerHTML='<span class="err">无膜层</span>';return}
-  var sub=(substrateInput.value||"").trim()||"p-Si (100)",svg=render(data,sub,1000,720,80,50,70);previewDiv.innerHTML=svg;
+  var sub=(substrateInput.value||"").trim()||"p-Si (100)",svg=render(data,sub,1000,720,10,10,30);previewDiv.innerHTML=svg;
   var maxY=0;for(var i=0;i<data.length;i++){if(data[i].y_top>maxY)maxY=data[i].y_top}statusLayers.textContent="层数: "+data.length;statusThickness.textContent="max y: "+(maxY/1000).toFixed(2)+" μm";statusMsg.innerHTML='<span class="ok">✅</span>';}
   catch(e){statusMsg.innerHTML='<span class="err">'+e.message+"</span>";previewDiv.innerHTML='<div class="empty-hint"><span>❌</span>'+e.message+"</div>"}}
 function expt(){
