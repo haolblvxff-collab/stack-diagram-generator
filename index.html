@@ -163,7 +163,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   // Transparent background (no background rect — preview gets its bg from CSS)
   svgLines.push('<text x="'+(W/2)+'" y="28" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="17" fill="#1a1a2e" font-weight="700" text-anchor="middle">Device Stack Cross-Section</text>');
   svgLines.push('<defs>'+hatches.join("")+'</defs>');
-  svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateColor+'" stroke="#37474F" stroke-width="0.6"/>');
+  svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateColor+'"/>');
   if(substrateHatch)svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateHatch+'"/>');
   svgLines.push('<text x="'+(W/2)+'" y="'+(yBottom+SH/2+5).toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="14" fill="#546E7A" font-weight="700" text-anchor="middle">'+substrate+'</text>');
 
@@ -193,6 +193,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   // points so the layer sidewall slopes instead of being vertical.
   function addBevelPoints(points,segmentIdx,segEnd,maxSeg,NSEG,flatTop,isConformal,layerThickPx,bevelDeg){
     var surfaceVal,bevelTop,bevelCoeff=Math.tan(bevelDeg*Math.PI/180);
+    var bevelOff=layerThickPx*bevelCoeff;
     // Left edge bevel
     if(segmentIdx>0){
       var stepHeight=Math.abs(surface[segmentIdx]-surface[segmentIdx-1]);
@@ -200,12 +201,10 @@ function render(layersData,substrate,W,H,MX,MY,SH){
       if(stepHeight>0.5&&bevelWidth>1){
         var leftEdgeX=MX+(segmentIdx-1)/NSEG*chartWidth,midX=leftEdgeX+bevelWidth;
         if(midX>points[0].x)midX=points[0].x;
-        // Interpolate the top of the bevel: for blanket, linearly slope from surrounding surface to flatTop;
-        // for conformal, follow the adjacent surface offset by thickness.
         surfaceVal=isConformal?surface[segmentIdx-1]-layerThickPx:surface[segmentIdx-1];
         bevelTop=isConformal?surface[segmentIdx-1]-layerThickPx:surface[segmentIdx-1]+(flatTop-surface[segmentIdx-1])*(midX-leftEdgeX)/(points[0].x-leftEdgeX);
-        points.unshift({x:midX,top:bevelTop,bot:surfaceAt(midX)});
-        points.unshift({x:leftEdgeX,top:surfaceVal,bot:surface[segmentIdx-1]});}}
+        points.unshift({x:midX,top:bevelTop,bot:surfaceAt(midX),topX:bevelDeg>0?midX+bevelOff:midX});
+        points.unshift({x:leftEdgeX,top:surfaceVal,bot:surface[segmentIdx-1],topX:bevelDeg>0?leftEdgeX+bevelOff:leftEdgeX});}}
     // Right edge bevel
     if(segEnd<maxSeg){
       var stepHeight=Math.abs(surface[segEnd]-surface[segEnd+1]);
@@ -215,18 +214,18 @@ function render(layersData,substrate,W,H,MX,MY,SH){
         if(midXR<points[points.length-1].x)midXR=points[points.length-1].x;
         surfaceVal=isConformal?surface[segEnd]-layerThickPx:surface[segEnd];
         bevelTop=isConformal?surface[segEnd]-layerThickPx:surface[segEnd]+(flatTop-surface[segEnd])*(points[points.length-1].x-midXR)/(points[points.length-1].x-rightEdgeX);
-        points.push({x:midXR,top:bevelTop,bot:surfaceAt(midXR)});
-        points.push({x:rightEdgeX,top:surfaceVal,bot:surface[segEnd+1]});}}
+        points.push({x:midXR,top:bevelTop,bot:surfaceAt(midXR),topX:bevelDeg>0?midXR-bevelOff:midXR});
+        points.push({x:rightEdgeX,top:surfaceVal,bot:surface[segEnd+1],topX:bevelDeg>0?rightEdgeX-bevelOff:rightEdgeX});}}
   }
 
   // ── Helper: convert point array to SVG path string (top edge then bottom edge) ──
   function buildPathFromPoints(points){
-    var path="M "+points[0].x.toFixed(1)+" "+points[0].top.toFixed(1);
-    for(var k=1;k<points.length;k++)path+=" L "+points[k].x.toFixed(1)+" "+points[k].top.toFixed(1);
+    var path="M "+(points[0].topX||points[0].x).toFixed(1)+" "+points[0].top.toFixed(1);
+    for(var k=1;k<points.length;k++)path+=" L "+(points[k].topX||points[k].x).toFixed(1)+" "+points[k].top.toFixed(1);
     for(var k=points.length-1;k>=0;k--)path+=" L "+points[k].x.toFixed(1)+" "+points[k].bot.toFixed(1);
-    return path+" Z";
+    path+=" Z";
+    return path;
   }
-
   // ── Helper: update surface array after a layer segment is deposited ──
   // Blanket mode: flatten the surface to flatTop (planarization).
   // Conformal mode: subtract uniform thickness (follows the existing topography).
@@ -300,15 +299,22 @@ function render(layersData,substrate,W,H,MX,MY,SH){
         var points=[];for(var k=seg.start;k<=seg.end;k++){
           var xPos=MX+k/NSEG*chartWidth,bot=surface[k];
           var top=isConformal?bot-thickPx:flatTop;
-          if(top>=bot)top=bot-0.5;  // ensure positive thickness
-          points.push({x:xPos,top:top,bot:bot});}
+          if(top>=bot)top=bot-0.5;
+          // Trapezoid: top edge inset by sidewall angle
+          var bevelOff=thickPx*Math.tan(bevelDeg*Math.PI/180);
+          var topX=xPos;
+          if(bevelDeg>0){
+            if(k===seg.start)topX=xPos+bevelOff;
+            else if(k===seg.end)topX=xPos-bevelOff;
+          }
+          points.push({x:xPos,top:top,bot:bot,topX:topX});}
 
         // Add bevel (45-degree sloped sidewall) at mask edges
         addBevelPoints(points,seg.start,seg.end,NSEG,NSEG,flatTop,isConformal,thickPx,bevelDeg);
 
         // Build and emit the SVG path for this segment
         var pathStr=buildPathFromPoints(points);
-        svgLines.push('<path d="'+pathStr+'" fill="'+layer.color+'" stroke="#37474F" stroke-width="0.6"/>');
+        svgLines.push('<path d="'+pathStr+'" fill="'+layer.color+'"/>');
         if(layerHatch)svgLines.push('<path d="'+pathStr+'" fill="'+layerHatch+'"/>');
 
         // Update surface after deposition
