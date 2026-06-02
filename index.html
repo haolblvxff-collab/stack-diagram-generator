@@ -203,10 +203,10 @@ function render(layersData,substrate,W,H,MX,MY,SH){
           pts.push({x:x,top:top,bot:bot});
         }
 
-        // Left bevel at surface step
+        // Left bevel at surface step (lowered threshold for small steps)
         if(seg.s>0&&bevelDeg>0){
           var stepH=Math.abs(surface[seg.s]-surface[seg.s-1]),bw=stepH*bevelC;
-          if(stepH>0.5&&bw>1){
+          if(stepH>0.1&&bw>0.3){
             var lX=MX+(seg.s-1)/NSEG*chartWidth,mX=lX+bw;
             if(mX>pts[0].x)mX=pts[0].x;
             var bvT=isConf?surface[seg.s-1]-thickPx:surface[seg.s-1]+(flatTop-surface[seg.s-1])*(mX-lX)/(pts[0].x-lX);
@@ -215,10 +215,10 @@ function render(layersData,substrate,W,H,MX,MY,SH){
           }
         }
 
-        // Right bevel at surface step
+        // Right bevel at surface step (lowered threshold for small steps)
         if(seg.e<NSEG&&bevelDeg>0){
           var stepH=Math.abs(surface[seg.e]-surface[seg.e+1]),bw=stepH*bevelC;
-          if(stepH>0.5&&bw>1){
+          if(stepH>0.1&&bw>0.3){
             var rX=MX+(seg.e+1)/NSEG*chartWidth,mX=rX-bw;
             if(mX<pts[pts.length-1].x)mX=pts[pts.length-1].x;
             var bvT=isConf?surface[seg.e]-thickPx:surface[seg.e]+(flatTop-surface[seg.e])*(pts[pts.length-1].x-mX)/(pts[pts.length-1].x-rX);
@@ -240,7 +240,9 @@ function render(layersData,substrate,W,H,MX,MY,SH){
         else{for(var k=seg.s;k<=seg.e;k++)surface[k]=Math.min(surface[k],flatTop);}
       }
 
-      // Accumulate overlap group surface
+      // Accumulate overlap group surface: take min (deepest=lowest pixel y)
+      // For blanket: deeper fill wins in overlapping regions
+      // For conformal: thicker layer determines final surface
       if(isGrp){for(var k=0;k<=NSEG;k++)gAccum[k]=Math.min(gAccum[k],surface[k]);}
 
       // Label placement
@@ -254,6 +256,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
         }
         labels.push({n:txt,c:bcx,y:bcy,w:bw,x1:bx1,x2:bx2,color:L.color,thick:thickPx});
       }
+      // Seam: record surface at right edge (shows remaining height after this layer)
       seams.push({y:surface[NSEG],label:L.y_top+" nm"});
     }
     if(isGrp)surface=gAccum;
@@ -267,7 +270,7 @@ function render(layersData,substrate,W,H,MX,MY,SH){
       var lb=labels[i],py=lb.y,px=lb.c;
       if(Math.abs(py-lastY)<15){stag=(stag+1)%3;var off=[0,-0.25,0.25];px=lb.c+(lb.w*off[stag]);px=Math.max(lb.x1+8,Math.min(lb.x2-8,px));}else{stag=0;}
       lastY=py;
-      svg.push('<text x="'+px.toFixed(1)+'" y="'+py.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="10" fill="'+(lb.color&&lum(lb.color)<130?"#fff":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+lb.n+'</text>');
+      svg.push('<text x="'+px.toFixed(1)+'" y="'+py.toFixed(1)+'" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="10" fill="'+(lb.color&&lum(lb.color)<160?"#fff":"#263238")+'" font-weight="600" text-anchor="middle" dominant-baseline="central">'+lb.n+'</text>');
     }
   }
 
