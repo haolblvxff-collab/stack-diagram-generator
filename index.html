@@ -85,6 +85,7 @@ body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Helvetica
   <div class="panel-form" id="form-panel">
     <div class="panel-head">膜层参数 <span class="count" id="layer-count">0</span></div>
     <div class="sub-row"><label>衬底</label><input type="text" id="substrate" value="p-Si (100)" placeholder="p-Si (100)"></div>
+    <div class="sub-row"><label>侧壁角</label><input type="range" id="bevel-angle" min="0" max="80" value="45" step="1"><span id="bevel-val" style="font-size:11px;color:var(--text2);min-width:36px;text-align:right">45°</span></div>
     <div class="table-head"><span>#</span><span>材料</span><span>颜色</span><span>y_bot</span><span>y_top</span><span>Mask</span><span>类型</span><span></span><span></span></div>
     <div class="table-wrap" id="layer-table"></div>
     <div class="add-row"><button id="btn-add">＋ 添加膜层</button></div>
@@ -154,9 +155,13 @@ function render(layersData,substrate,W,H,MX,MY,SH){
   function getHatch(materialName){var norm=san(materialName);if(norm.indexOf("sio2")>=0||norm.indexOf("teos")>=0||norm.indexOf("bpsg")>=0||norm.indexOf("psg")>=0||norm.indexOf("sog")>=0)return"url(#hOx)";if(norm.indexOf("sin")>=0)return"url(#hSiN)";if(norm.indexOf("al")>=0||norm.indexOf("cu")>=0||norm.indexOf("w")>=0||norm.indexOf("ti")>=0||norm.indexOf("au")>=0||norm.indexOf("metal")>=0)return"url(#hMet)";if(norm.indexOf("poly")>=0||norm.indexOf("pr")>=0)return"url(#hPoly)";if(norm.indexOf("si")>=0)return"url(#hSi)";return null;}
 
   var substrateColor=col(substrate),substrateHatch=getHatch(substrate);
-  var svgLines=[],seamX=MX+chartWidth+50;  // x position for right-side seam lines
-  var seamLines=[{y:yBottom,label:"0 nm"}],NSEG=120,BEVEL_COEFF=0.5;
-  svgLines.push('<rect width="'+W+'" height="'+H+'" fill="#FAFAFA"/>');
+  var svgLines=[],seamX=MX+chartWidth+50;
+  var seamLines=[{y:yBottom,label:"0 nm"}],NSEG=120;
+  // Read bevel angle from DOM (0° = vertical, 45° = default, 80° = very sloped)
+  var bevelAngleEl=document.getElementById('bevel-angle');
+  var bevelDeg=bevelAngleEl?parseInt(bevelAngleEl.value)||45:45;
+  var BEVEL_COEFF=Math.tan(bevelDeg*Math.PI/180);
+  // Transparent background (no background rect — preview gets its bg from CSS)
   svgLines.push('<text x="'+(W/2)+'" y="28" font-family="PingFang SC,Helvetica Neue,sans-serif" font-size="17" fill="#1a1a2e" font-weight="700" text-anchor="middle">Device Stack Cross-Section</text>');
   svgLines.push('<defs>'+hatches.join("")+'</defs>');
   svgLines.push('<rect x="'+MX.toFixed(1)+'" y="'+yBottom.toFixed(1)+'" width="'+chartWidth.toFixed(1)+'" height="'+SH.toFixed(1)+'" fill="'+substrateColor+'" stroke="#37474F" stroke-width="0.6"/>');
@@ -433,6 +438,10 @@ resizeHandle.addEventListener("mousedown",function(e){resizing=true;e.preventDef
 document.addEventListener("mousemove",function(e){if(!resizing)return;formPanel.style.width=Math.max(420,Math.min(700,e.clientX))+"px"});
 document.addEventListener("mouseup",function(){resizing=false});
 document.getElementById("btn-gen").addEventListener("click",gen);
+// Bevel angle slider: update display + re-render on change
+var bevelSlider=document.getElementById("bevel-angle");
+var bevelVal=document.getElementById("bevel-val");
+bevelSlider.addEventListener("input",function(){bevelVal.textContent=bevelSlider.value+"°";gen();});
 document.getElementById("btn-clear").addEventListener("click",clearAll);
 document.getElementById("btn-add").addEventListener("click",function(){addLayer()});
 document.getElementById("btn-export").addEventListener("click",expt);
